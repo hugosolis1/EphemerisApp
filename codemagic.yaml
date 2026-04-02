@@ -1,0 +1,123 @@
+# codemagic.yaml para EphemerisApp
+# App iOS nativa (Swift/SwiftUI + Swiss Ephemeris C library)
+# Coloca este archivo en la raíz del repositorio
+
+workflows:
+  # ─── Workflow principal: Build + Publicar a TestFlight / App Store ───
+  ios-build-publish:
+    name: iOS Build & Publish
+    max_build_duration: 30
+    instance_type: mac_mini_m1
+
+    # Variables de entorno
+    environment:
+      xcode: 15.4
+      cocoapods: default
+      vars:
+        XCODE_PROJECT: "EphemerisApp.xcodeproj"
+        XCODE_SCHEME: "EphemerisApp"
+        APP_ID: "com.ephemeris.app"
+
+    # Code signing con certificados automáticos de Codemagic
+    # Necesitas configurar en Codemagic > Team > Code signing:
+    #   - Apple Developer email y Team ID
+    #   - Subir certificado .p12 y provisioning profile, O usar Auto code signing
+    scripts:
+      - name: Install Apple certificates & profiles
+        script: |
+          # Codemagic CLI se encarga del code signing automáticamente
+          # si tienes configurado el Apple Developer account en el dashboard
+          xcrun xcodebuild -version
+
+      - name: Build iOS app
+        script: |
+          # Construir para arquitectura genérica (iPhone + Simulator)
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -sdk iphoneos \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -allowProvisioningUpdates \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$CM_TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$APP_ID" \
+          | xcpretty
+
+    artifacts:
+      - build/ios/iphoneos/**/*.app
+      - build/ios/iphoneos/**/*.dSYM
+      - /tmp/xcodebuild_logs/*.log
+
+    # Publicar a TestFlight o App Store Connect
+    publishing:
+      app_store_connect:
+        # Subir a TestFlight
+        submit_to_testflight: true
+        # Cambiar a true cuando quieras enviar a App Store Review
+        submit_to_app_store: false
+
+        # Configuración de metadata (opcional)
+        # beta_groups:
+        #   - "Internal Testers"
+        #   - "External Testers"
+
+  # ─── Workflow alternativo: Build sin code signing (solo compilación) ───
+  ios-build-only:
+    name: iOS Build Only (No Signing)
+    max_build_duration: 15
+    instance_type: mac_mini_m1
+
+    environment:
+      xcode: 15.4
+      vars:
+        XCODE_PROJECT: "EphemerisApp.xcodeproj"
+        XCODE_SCHEME: "EphemerisApp"
+
+    scripts:
+      - name: Check Xcode version
+        script: |
+          xcrun xcodebuild -version
+          xcrun swift --version
+
+      - name: Build without code signing
+        script: |
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -sdk iphoneos \
+            -configuration Debug \
+            -destination "generic/platform=iOS" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ENABLE_BITCODE=NO \
+          | xcpretty
+
+  # ─── Workflow: Build para Simulator (para testing) ───
+  ios-simulator-test:
+    name: iOS Simulator Build & Test
+    max_build_duration: 20
+    instance_type: mac_mini_m1
+
+    environment:
+      xcode: 15.4
+      vars:
+        XCODE_PROJECT: "EphemerisApp.xcodeproj"
+        XCODE_SCHEME: "EphemerisApp"
+
+    scripts:
+      - name: Build for Simulator
+        script: |
+          # Construir para el simulador de iPhone 15
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=iPhone 15,OS=latest" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build \
+          | xcpretty
